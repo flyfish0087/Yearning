@@ -12,54 +12,12 @@ from django.http import (
 from libs.serializers import SQLGeneratDic
 from core.models import (
     SqlDictionary,
-    DatabaseList
+    DatabaseList,
+    grained
 )
+from core.task import grained_permissions
 
 CUSTOM_ERROR = logging.getLogger('Yearning.core.views')
-
-
-class exportdoc(baseview.SuperUserpermissions):
-    '''
-    导出数据字典为docx文档
-    '''
-
-    def post(self, request, args=None):
-        try:
-            conf = configparser.ConfigParser()
-            conf.read('deploy.conf')
-            ip = conf.get('mysql', 'address')
-            user = conf.get('mysql', 'username')
-            db = conf.get('mysql', 'db')
-            password = conf.get('mysql', 'password')
-        except Exception:
-            CUSTOM_ERROR.error('''The configuration file information is missing!''')
-            return HttpResponse(status=500)
-        else:
-            try:
-                data = json.loads(request.data['data'])
-                connection_name = request.data['connection_name']
-                basename = request.data['basename']
-            except KeyError as e:
-                CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
-                return HttpResponse(status=500)
-            else:
-                try:
-                    c = exportdocx.ToWord(
-                        Host=ip,
-                        User=user,
-                        Password=password,
-                        Database=db,
-                        Charset='utf8')
-                    a = c.exportTables(Conn=connection_name, Schemal=basename, TableList=data)
-                    return Response(
-                        {
-                            'status': 'docx文档已生成',
-                            'url': '%s_%s_Dictionary_%s.docx' % (connection_name, basename, a)
-                        }
-                    )
-                except Exception as e:
-                    CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
-                    return HttpResponse(status=500)
 
 
 class adminpremisson(baseview.SuperUserpermissions):
@@ -136,8 +94,11 @@ class adminpremisson(baseview.SuperUserpermissions):
             else:
                 try:
                     for i in basename:
-                        adminpremisson.DicGenerate(id, i)
-                    return HttpResponse('ok')
+                        if SqlDictionary.objects.filter(BaseName=i).first():
+                            pass
+                        else:
+                            adminpremisson.DicGenerate(id, i)
+                    return HttpResponse('数据库字典生成成功！')
                 except Exception as e:
                     CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
                     return HttpResponse(status=500)
@@ -153,6 +114,15 @@ class adminpremisson(baseview.SuperUserpermissions):
                 try:
                     for i in BaseName:
                         SqlDictionary.objects.filter(Name=Name, BaseName=i).delete()
+                    if SqlDictionary.objects.filter(Name=Name).first():
+                        pass
+                    else:
+                        per = grained.objects.all().values('username', 'permissions')
+                        for i in per:
+                            for c in i['permissions']:
+                                if isinstance(i['permissions'][c], list) and c == 'diccon':
+                                    i['permissions'][c] = list(filter(lambda x: x != Name, i['permissions'][c]))
+                            grained.objects.filter(username=i['username']).update(permissions=i['permissions'])
                     return Response('字典已删除！')
                 except Exception as e:
                     CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
@@ -240,6 +210,31 @@ class adminpremisson(baseview.SuperUserpermissions):
                 except Exception as e:
                     CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
                     return Response('%s 表备注更新失败，请联系cookie' % felid)
+
+        elif args == 'addtable':
+            try:
+                basename = request.data['basename']
+                tablename = request.data['tablename']
+                name = request.data['name']
+                text = json.loads(request.data['text'])
+                tablecomment = request.data['tablecomment']
+            except KeyError as e:
+                CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
+                return HttpResponse(status=500)
+            else:
+                try:
+                    if tablename == '' or basename == '':
+                        return Response('请选择对应数据库后提交!')
+                    for i in text:
+                        SqlDictionary.objects.get_or_create(
+                            BaseName = basename, TableName = tablename,
+                            Field = i['value'], Type = i['type'],Name = name,
+                            Extra = i['extra'], TableComment = tablecomment
+                        )
+                    return Response('表数据已添加成功!')
+                except Exception as e:
+                    CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
+                    return HttpResponse(status=500)
 
         elif args == 'deltable':
             try:
@@ -397,11 +392,13 @@ class dictionary(baseview.BaseView):
                     CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
                     return HttpResponse(status=500)
 
+    @grained_permissions
     def get(self, request, args=None):
         try:
-            data = SqlDictionary.objects.all().values('Name')
-            data.query.distinct = ['Name']
-            return Response(data)
+            _type = request.GET.get('permissions_type') + 'con'
+            permission = grained.objects.filter(username=request.user).first()
+            _c = [x for x in permission.permissions[_type]]
+            return Response(_c)
         except Exception as e:
             CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
             return HttpResponse(status=500)
@@ -420,6 +417,59 @@ class dictionary(baseview.BaseView):
             except Exception as e:
                 CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
                 return HttpResponse(status=e)
+
+
+class exportdoc(baseview.SuperUserpermissions):
+    '''
+    导出数据字典为docx文档
+    '''
+    @grained_permissions
+    def post(self, request, args=None):
+        try:
+            conf = configparser.ConfigParser()
+            conf.read('deploy.conf')
+            ip = conf.get('mysql', 'address')
+            user = conf.get('mysql', 'username')
+            db = conf.get('mysql', 'db')
+            password = conf.get('mysql', 'password')
+        except KeyError:
+            CUSTOM_ERROR.error('''The configuration file information is missing!''')
+            return HttpResponse(status=500)
+        else:
+            try:
+                _c = request.data['permissions_type'] + 'export'
+                permissions = grained.objects.filter(username=request.user).first()
+                if permissions.permissions[_c] == '0':
+                    return Response(
+                        {
+                            'status': '该账户没有导出数据字典权限',
+                            'url': ''
+                        }
+                    )
+                data = json.loads(request.data['data'])
+                connection_name = request.data['connection_name']
+                basename = request.data['basename']
+            except KeyError as e:
+                CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
+                return HttpResponse(status=500)
+            else:
+                try:
+                    c = exportdocx.ToWord(
+                        Host=ip,
+                        User=user,
+                        Password=password,
+                        Database=db,
+                        Charset='utf8')
+                    a = c.exportTables(Conn=connection_name, Schemal=basename, TableList=data)
+                    return Response(
+                        {
+                            'status': 'docx文档已生成',
+                            'url': '%s_%s_Dictionary_%s.docx' % (connection_name, basename, a)
+                        }
+                    )
+                except Exception as e:
+                    CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
+                    return HttpResponse(status=500)
 
 
 def downloadFile(req):

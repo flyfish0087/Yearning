@@ -38,8 +38,8 @@
               <Input v-model="formItem.text" placeholder="请输入"></Input>
             </FormItem>
 
-            <FormItem label="指定审核人:" prop="text">
-              <Select v-model="formItem.assigned">
+            <FormItem label="指定审核人:" prop="assigned">
+              <Select v-model="formItem.assigned" filterable>
                 <Option v-for="i in this.assigned" :value="i.username" :key="i.username">{{i.username}}</Option>
               </Select>
             </FormItem>
@@ -50,7 +50,8 @@
                 <Radio label="0">否</Radio>
               </RadioGroup>
             </FormItem>
-
+          </Form>
+          <Form :label-width="30">
             <FormItem>
               <Button type="info" icon="paintbucket" @click.native="beautify()">美化</Button>
               <Button type="error" icon="trash-a" @click.native="ClearForm()" style="margin-left: 10%">清除</Button>
@@ -61,7 +62,6 @@
               <Button type="success" icon="ios-redo" @click.native="SubmitSQL()" style="margin-left: 10%" :disabled="this.validate_gen">提交</Button>
             </FormItem>
           </Form>
-
 
           <Alert style="height: 145px">
             检测表字段提示信息
@@ -83,7 +83,7 @@
         <Icon type="ios-crop-strong"></Icon>
         填写sql语句
       </p>
-      <Input v-model="formItem.textarea" type="textarea" :autosize="{minRows: 15,maxRows: 15}" placeholder="请输入需要提交的SQL语句,多条sql请用;分隔" autocomplete="on"></Input>
+      <editor v-model="formItem.textarea" @init="editorInit"></editor>
       <br>
       <br>
       <Table :columns="columnsName" :data="Testresults" highlight-row></Table>
@@ -99,7 +99,8 @@ import Cookies from 'js-cookie'
 import util from '../../libs/util'
 export default {
   components: {
-    ICol
+    ICol,
+    editor: require('../../libs/editor')
   },
   name: 'SQLsyntax',
   data () {
@@ -111,7 +112,7 @@ export default {
         connection_name: '',
         basename: '',
         text: '',
-        backup: 0,
+        backup: '0',
         assigned: ''
       },
       columnsName: [
@@ -184,13 +185,22 @@ export default {
             message: '最多20个字',
             trigger: 'blur'
           }
-        ]
+        ],
+        assigned: [{
+          required: true,
+          message: '说明不得为空',
+          trigger: 'blur'
+        }]
       },
       id: null,
       assigned: []
     }
   },
   methods: {
+    editorInit: function () {
+      require('brace/mode/mysql')
+      require('brace/theme/xcode')
+    },
     beautify () {
       axios.put(`${util.url}/sqlsyntax/beautify`, {
           'data': this.formItem.textarea
@@ -243,6 +253,16 @@ export default {
       }
     },
     test_sql () {
+      let ddl = ['select', 'alter', 'drop', 'create']
+      let createtable = this.formItem.textarea.replace(/(;|；)$/gi, '').replace(/\s/g, ' ').replace(/；/g, ';').split(';')
+      for (let i of createtable) {
+        for (let c of ddl) {
+          if (i.toLowerCase().indexOf(c) === 0) {
+            this.$Message.error('不可提交非DML语句!');
+            return false
+          }
+        }
+      }
       this.$refs['formItem'].validate((valid) => {
         if (valid) {
           if (this.formItem.textarea) {
@@ -286,7 +306,6 @@ export default {
       this.$refs['formItem'].validate((valid) => {
         if (valid) {
           if (this.formItem.textarea) {
-            this.validate_gen = true
             this.datalist.sqllist = this.formItem.textarea.replace(/(;|；)$/gi, '').replace(/\s/g, ' ').replace(/；/g, ';').split(';')
             axios.post(`${util.url}/sqlsyntax/`, {
                 'data': JSON.stringify(this.formItem),
@@ -300,7 +319,6 @@ export default {
                   title: '成功',
                   desc: res.data
                 })
-                this.validate_gen = !this.validate_gen
                 this.ClearForm()
               })
               .catch(error => {
@@ -309,18 +327,18 @@ export default {
           } else {
             this.$Message.error('请填写sql语句后再提交!');
           }
+          this.validate_gen = true
         } else {
           this.$Message.error('表单验证失败!');
         }
       })
     },
     ClearForm () {
-      this.$refs['formItem'].resetFields();
       this.formItem.textarea = ''
     }
   },
   mounted () {
-    axios.put(`${util.url}/workorder/connection`)
+    axios.put(`${util.url}/workorder/connection`, {'permissions_type': 'dml'})
       .then(res => {
         this.item = res.data['connection']
         this.assigned = res.data['person']

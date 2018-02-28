@@ -31,7 +31,8 @@ from core.api.managerdb import (
 )
 from core.api.auditorder import (
     orderdetail,
-    audit
+    audit,
+    undoOrder
 )
 from core.api.record import recordorder
 from core.api.sqlorder import sqlorder
@@ -41,7 +42,7 @@ urlpatterns = [
     url(r'^api/v1/userinfo/(.*)', userinfo.as_view()),
     url(r'^api/v1/workorder/(.*)', addressing.as_view()),
     url(r'^api/v1/sqlorder/(.*)', gensql.as_view()),
-    url(r'^api/v1/mamagement_sql/(.*)', managementdb.as_view()),
+    url(r'^api/v1/mamagement_sql', managementdb.as_view()),
     url(r'^api/v1/audit_sql', audit.as_view()),
     url(r'^api/v1/sqldic/(.*)', dictionary.as_view()),
     url(r'^api/v1/auth_twice', authgroup.as_view()),
@@ -57,6 +58,7 @@ urlpatterns = [
     url(r'^api/v1/search', serach.as_view()),
     url(r'^api/v1/ldapauth', ldapauth.as_view()),
     url(r'^api/v1/globalpermissions', pushpermissions.as_view()),
+    url(r'^api/v1/undoOrder', undoOrder.as_view()),
     url(r'^api/v1/download', downloadFile),
     url(r'^api-token-auth/', login_auth.as_view()),
 ]

@@ -19,6 +19,7 @@
           >
         <Button type="text" style="margin-left: -1%">删除记录</Button>
         </Poptip>
+        <Button type="text" style="margin-left: -1%" @click.native="mou_data()">刷新</Button>
         <Table border :columns="columns6" :data="tmp" stripe ref="selection" @on-selection-change="delrecordList"></Table>
         <br>
         <Page :total="pagenumber" show-elevator @on-change="splicpage" :page-size="20" ref="page"></Page>
@@ -103,6 +104,10 @@ export default {
         {
           title: '工单说明:',
           key: 'text'
+        },
+        {
+          title: '是否备份',
+          key: 'backup'
         },
         {
           title: '提交时间:',
@@ -285,7 +290,6 @@ export default {
             title: '执行成功',
             desc: res.data
           })
-          this.mou_data()
           this.$refs.page.currentPage = 1
         })
         .catch(error => {
@@ -342,6 +346,7 @@ export default {
       axios.get(`${util.url}/audit_sql?page=${vl}&username=${Cookies.get('user')}`)
         .then(res => {
           this.tmp = res.data.data
+          this.tmp.forEach((item) => { (item.backup === 1) ? item.backup = '否' : item.backup = '是' })
           this.pagenumber = res.data.page.alter_number
         })
         .catch(error => {
