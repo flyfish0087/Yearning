@@ -352,13 +352,22 @@ export default {
         'text',
         'mediumtext',
         'longtext',
+        'blob',
+        'mediumblob',
+        'longblob',
         'tinyint',
         'smallint',
         'mediumint',
         'bigint',
+        'time',
+        'year',
         'date',
         'datetime',
-        'timestamp'
+        'timestamp',
+        'decimal',
+        'float',
+        'double',
+        'jason'
       ],
       assigned: [],
       formDynamic: '',
@@ -380,7 +389,7 @@ export default {
       let createtable = this.formDynamic.split(';')
       for (let i of createtable) {
         for (let c of ddl) {
-          if (i.toLowerCase().indexOf(c) !== -1) {
+          if (i.toLowerCase().indexOf(c) === 0) {
             this.$Message.error('不可提交非DDL语句!');
             return false
           }
@@ -619,7 +628,7 @@ export default {
       this.openswitch = !this.openswitch
     },
     commitorder () {
-      if (this.sql === [] || this.formItem.basename === '' || this.formItem.tablename === '' || this.assigned === '') {
+      if (this.sql === [] || this.formItem.basename === '' || this.assigned === '') {
         this.$Notice.error({
           title: '警告',
           desc: '工单数据缺失,请检查数据库信息及生成的sql语句'
