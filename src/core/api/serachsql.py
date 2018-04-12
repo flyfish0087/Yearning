@@ -23,7 +23,7 @@ class search(baseview.BaseView):
     def post(self, request, args=None):
         sql = request.data['sql']
         check = str(sql).strip().split(';\n')
-        if check[-1].strip().lower().startswith('select') != 1:
+        if check[-1].strip().lower().startswith('s') != 1:
             return Response({'error': '只支持查询功能或删除不必要的空白行！'})
         else:
             address = json.loads(request.data['address'])
@@ -40,7 +40,8 @@ class search(baseview.BaseView):
                     data_set = f.search(sql=query_sql)
                     return Response(data_set)
             except Exception as e:
-                return Response({'error': str(e)})
+                CUSTOM_ERROR.error(f'{e.__class__.__name__}: {e}')
+                return Response({'error': '管理员已将最大limit限制为%s!' % conf.limit})
 
 
 def replace_limit(sql, limit):
@@ -53,6 +54,8 @@ def replace_limit(sql, limit):
 
     if sql[-1] != ';':
         sql += ';'
+    if sql.startswith('show') != -1:
+        return sql
     sql_re = re.search(r'limit\s.*\d.*;',sql.lower())
     length = ''
     if sql_re is not None:
@@ -65,7 +68,7 @@ def replace_limit(sql, limit):
     else:
         sql = sql.rstrip(';') + ' limit %s;'%limit
         return sql
-    if int(length) < int(limit):
+    if int(length) <= int(limit):
         return sql
     else:
         sql = re.sub(r'limit\s.*\d.*;', 'limit %s;' % limit)
